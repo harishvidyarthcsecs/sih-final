@@ -28,11 +28,29 @@ FIXED_CHECKS=0
 # ----------------------------------------------------------------------------
 # Logging
 # ----------------------------------------------------------------------------
-log_info()  { echo -e "${GREEN}[INFO]${NC} $1"; }
-log_pass()  { echo -e "${GREEN}[PASS]${NC} $1"; ((PASSED_CHECKS++)); }
-log_fixed() { echo -e "${BLUE}[FIXED]${NC} $1"; ((FIXED_CHECKS++)); }
-log_warn()  { echo -e "${YELLOW}[WARN]${NC} $1"; }
-log_error() { echo -e "${RED}[FAIL]${NC} $1"; ((FAILED_CHECKS++)); }
+log_info()  { 
+    echo -e "${GREEN}[INFO]${NC} $1"
+    save_config "INFO" "Log Info" "$1"
+}
+log_pass()  { 
+    echo -e "${GREEN}[PASS]${NC} $1"
+    save_config "PASS" "Log Pass" "$1"
+    ((PASSED_CHECKS++))
+}
+log_fixed() { 
+    echo -e "${BLUE}[FIXED]${NC} $1"
+    save_config "FIXED" "Log Fixed" "$1"
+    ((FIXED_CHECKS++))
+}
+log_warn()  { 
+    echo -e "${YELLOW}[WARN]${NC} $1"
+    save_config "WARN" "Log Warn" "$1"
+}
+log_error() { 
+    echo -e "${RED}[FAIL]${NC} $1"
+    save_config "FAIL" "Log Error" "$1"
+    ((FAILED_CHECKS++))
+}
 
 # ----------------------------------------------------------------------------
 # Database functions
@@ -58,15 +76,18 @@ save_config() {
     
     python3 - <<EOF
 import sqlite3
-conn = sqlite3.connect('$DB_PATH')
-cursor = conn.cursor()
-cursor.execute('''
-    INSERT OR REPLACE INTO configurations
-    (topic, rule_id, rule_name, original_value, current_value, status)
-    VALUES (?, ?, ?, ?, ?, 'stored')
-''', ('$TOPIC', '$rule_id', '$rule_name', '$original_value', '$current_value'))
-conn.commit()
-conn.close()
+try:
+    conn = sqlite3.connect('$DB_PATH')
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT OR REPLACE INTO configurations
+        (topic, rule_id, rule_name, original_value, current_value, status)
+        VALUES (?, ?, ?, ?, ?, 'stored')
+    ''', ('$TOPIC', '$rule_id', '$rule_name', '$original_value', '$current_value'))
+    conn.commit()
+    conn.close()
+except Exception as e:
+    print(f"Error: {str(e)}")
 EOF
 }
 

@@ -5,9 +5,10 @@
 #
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+DB_FILE="$SCRIPT_DIR/hardening.db"
 LOG="$SCRIPT_DIR/security_check_log.txt"
 
-TOTAL_CHECKS=0
+TOTAL_CHECKS=-10
 PASSED_CHECKS=0
 FAILED_CHECKS=0
 FIXED_CHECKS=0
@@ -21,25 +22,62 @@ echo "Security Check Log" > "$LOG"
 echo "====================" >> "$LOG"
 echo "Running Scan Mode..." >> "$LOG"
 
-# ---------------------------------------------------------------------------
+# Initialize SQLite Database and table
+initialize_db() {
+    if [ ! -f "$DB_FILE" ]; then
+        echo "Database does not exist, creating now..."
+    fi
+
+    sqlite3 "$DB_FILE" "CREATE TABLE IF NOT EXISTS configurations (
+        topic TEXT,
+        rule_id TEXT PRIMARY KEY,
+        rule_name TEXT,
+        original_value TEXT,
+        current_value TEXT,
+        status TEXT
+    );"
+    
+    echo "Database initialized or already exists."
+}
+
 # Logging helpers
-# ---------------------------------------------------------------------------
 log_info() { echo -e "${GREEN}[INFO]${NC} $1" | tee -a "$LOG"; }
-log_pass() { echo -e "${GREEN}[PASS]${NC} $1" | tee -a "$LOG"; ((PASSED_CHECKS++)); ((TOTAL_CHECKS++)); }
-log_fail() { echo -e "${RED}[FAIL]${NC} $1" | tee -a "$LOG"; ((FAILED_CHECKS++)); ((TOTAL_CHECKS++)); }
+log_pass() { echo -e "${GREEN}[PASS]${NC} $1" | tee -a "$LOG"; ((PASSED_CHECKS++)); ((TOTAL_CHECKS++)); save_config "$1" "pass"; }
+log_fail() { echo -e "${RED}[FAIL]${NC} $1" | tee -a "$LOG"; ((FAILED_CHECKS++)); ((TOTAL_CHECKS++)); save_config "$1" "fail"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1" | tee -a "$LOG"; }
 
-# ---------------------------------------------------------------------------
-# Permission checks
-# ---------------------------------------------------------------------------
+# Save configuration to database
+save_config() {
+    local rule_name="$1"
+    local status="$2"
+    local original_value="$3"
+    local current_value="$4"
+
+    python3 - <<EOF
+import sqlite3
+conn = sqlite3.connect("$DB_FILE")
+cursor = conn.cursor()
+cursor.execute("""
+INSERT OR REPLACE INTO configurations 
+(topic, rule_id, rule_name, original_value, current_value, status)
+VALUES (?, ?, ?, ?, ?, ?)
+""", ("System Maintenance", "$rule_name", "$rule_name", "$original_value", "$current_value", "$status"))
+conn.commit()
+conn.close()
+EOF
+}
+
+# Check file permissions and save status in DB
 check_perm() {
-    file="$1"
-    acceptable="$2"
+    local file="$1"
+    local acceptable="$2"
+    local rule_name="$3"
 
     ((TOTAL_CHECKS++))
 
     if [[ ! -e "$file" ]]; then
         log_warn "$file does not exist (skipped)"
+        save_config "$rule_name" "warn" "N/A" "N/A"
         return
     fi
 
@@ -50,12 +88,14 @@ check_perm() {
     for val in "${allowed[@]}"; do
         if [[ "$mode" == "$val" ]]; then
             log_pass "$file permissions correct ($mode)"
+            save_config "$rule_name" "pass" "$mode" "$mode"
             return
         fi
     done
 
     # Not acceptable → fail
     log_fail "$file permissions $mode (expected: $acceptable)"
+    save_config "$rule_name" "fail" "$mode" "$acceptable"
 
     # If fix mode, try to correct
     if [[ "$MODE" == "fix" ]]; then
@@ -63,37 +103,46 @@ check_perm() {
         if sudo chmod "$target" "$file"; then
             log_info "Fixed permissions for $file → $target"
             ((FIXED_CHECKS++))
+            save_config "$rule_name" "fixed" "$mode" "$target"
         else
             log_fail "Failed to fix permissions for $file"
         fi
     fi
 }
 
-check_perm /etc/passwd "644"
-check_perm /etc/passwd- "600,644"
-check_perm /etc/group "644"
-check_perm /etc/group- "600,644"
-check_perm /etc/shadow "600,640"
-check_perm /etc/shadow- "600"
-check_perm /etc/gshadow "600,640"
-check_perm /etc/gshadow- "600"
-check_perm /etc/shells "644"
-check_perm /etc/security/opasswd "600,644"
+# Initialize the database before any checks
+initialize_db
+
+# System File Checks — Permissions
+check_perm /etc/passwd "644" "Ensure permissions on /etc/passwd"
+check_perm /etc/passwd- "600,644" "Ensure permissions on /etc/passwd-"
+check_perm /etc/group "644" "Ensure permissions on /etc/group"
+check_perm /etc/group- "600,644" "Ensure permissions on /etc/group-"
+check_perm /etc/shadow "600,640" "Ensure permissions on /etc/shadow"
+check_perm /etc/shadow- "600" "Ensure permissions on /etc/shadow-"
+check_perm /etc/gshadow "600,640" "Ensure permissions on /etc/gshadow"
+check_perm /etc/gshadow- "600" "Ensure permissions on /etc/gshadow-"
+check_perm /etc/shells "644" "Ensure permissions on /etc/shells"
+check_perm /etc/security/opasswd "600,644" "Ensure permissions on /etc/security/opasswd"
 
 # ---------------------------------------------------------------------------
 # Shadow password and empty fields
 # ---------------------------------------------------------------------------
 if pwck -r 2>&1 | grep -q "no shadow"; then
     log_fail "Some accounts are not using shadow passwords"
+    save_config "Ensure all accounts use shadow passwords" "fail" "N/A" "N/A"
 else
     log_pass "All accounts use shadow passwords"
+    save_config "Ensure all accounts use shadow passwords" "pass" "N/A" "N/A"
 fi
 
 empty_fields=$(awk -F: '($2 == "") {print $1}' /etc/shadow)
 if [[ -z "$empty_fields" ]]; then
     log_pass "No empty password fields"
+    save_config "Ensure /etc/shadow password fields are not empty" "pass" "N/A" "N/A"
 else
     log_fail "Empty password fields found: $empty_fields"
+    save_config "Ensure /etc/shadow password fields are not empty" "fail" "$empty_fields" "N/A"
 fi
 
 # ---------------------------------------------------------------------------

@@ -2,13 +2,13 @@ Security Check Log
 ====================
 Running Scan Mode...
 [0;32m[PASS][0m /etc/passwd permissions correct (644)
-[0;32m[PASS][0m /etc/passwd- permissions correct (600)
+[0;32m[PASS][0m /etc/passwd- permissions correct (644)
 [0;32m[PASS][0m /etc/group permissions correct (644)
-[0;32m[PASS][0m /etc/group- permissions correct (600)
-[0;32m[PASS][0m /etc/shadow permissions correct (600)
-[0;32m[PASS][0m /etc/shadow- permissions correct (600)
+[0;32m[PASS][0m /etc/group- permissions correct (644)
+[0;32m[PASS][0m /etc/shadow permissions correct (640)
+[0;31m[FAIL][0m /etc/shadow- permissions 640 (expected: 600)
 [0;32m[PASS][0m /etc/gshadow permissions correct (640)
-[0;32m[PASS][0m /etc/gshadow- permissions correct (600)
+[0;31m[FAIL][0m /etc/gshadow- permissions 640 (expected: 600)
 [0;32m[PASS][0m /etc/shells permissions correct (644)
 [0;32m[PASS][0m /etc/security/opasswd permissions correct (600)
 [0;32m[PASS][0m All accounts use shadow passwords
@@ -21,8 +21,8 @@ Running Scan Mode...
 [0;32m[PASS][0m No dangerous dotfile permissions
 [0;32m[PASS][0m No unsafe world-writable files
 [0;32m[PASS][0m All system files have valid owners/groups
-[0;32m[INFO][0m SUID files found: 21
-[0;32m[INFO][0m SGID files found: 13
+[0;32m[INFO][0m SUID files found: 34
+[0;32m[INFO][0m SGID files found: 17
 [0;32m[PASS][0m All users have valid shells
 [0;32m[PASS][0m sudoers file exists
 [0;32m[PASS][0m opasswd file exists
@@ -30,9 +30,9 @@ Running Scan Mode...
 [0;32m[PASS][0m hosts.deny exists
 
 ==================== Summary ====================
-Total Checks : 34
-Passed       : 24
-Failed       : 0
+Total Checks : 24
+Passed       : 22
+Failed       : 2
 Fixed        : 0
 =================================================
-[0;32m[PASS] All checks passed.[0m
+[0;31m[FAIL] Issues detected.[0m
